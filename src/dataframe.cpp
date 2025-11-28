@@ -1,17 +1,130 @@
 #include "dataframe.h"
 
+#include <array>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <ranges>
+
+#include "utils.h"
 
 DataFrame::DataFrame(std::vector<std::string> cn)
     : column_info(std::move(cn)) {}
 
-/*
-    DataFrame::read_csv(const std::string& csv)
-{
+void DataFrame::read_csv(
+    const std::string& csv,
+    const std::unordered_map<std::string, ColumnType>& types) {
+  std::ifstream file{csv};
+  if (!file.is_open()) {
+    std::cerr << "failed to open data file " << csv << "\n";
+    return;
+  }
 
+  file.seekg(0, std::ios::end);
+  std::streamsize size(file.tellg());
+  file.seekg(0, std::ios::beg);
+
+  std::string buffer(size, '\0');
+  file.read(buffer.data(), size);
+
+  size_t header_end(buffer.find('\n'));
+  if (header_end == std::string::npos) {
+    std::cerr << "missing header in data file " << csv << "\n";
+    return;
+  }
+
+  std::string_view header{buffer.data(), header_end};
+  auto headers{Utils::split(header, ',')};
+
+  // to reserve column vector sizes
+  size_t row_count{static_cast<size_t>(
+      std::count(buffer.begin() + header_end, buffer.end(), '\n'))};
+
+  // compare types with headers
+  bool invalid_columns{false};
+  for (const auto& [col, _] : types) {
+    if (std::ranges::find(headers, col) == headers.end()) {
+      invalid_columns = true;
+      break;
+    }
+  }
+  if (invalid_columns) {
+    throw std::invalid_argument(
+        "specified input types contains invalid columns");
+  }
+
+  if (types.size() != headers.size()) {
+    std::string_view data{buffer};
+    const std::unordered_map<std::string, ColumnType> all_types{
+        infer_types(data, headers, types)};
+    create_columns(headers, all_types, row_count);
+  } else {
+    create_columns(headers, types, row_count);
+  }
+
+  size_t line_start{header_end + 1};
+  int line_number{2};
+
+  while (line_start < buffer.size()) {
+    size_t line_end{buffer.find('\n', line_start)};
+    if (line_end == std::string::npos) {
+      line_end = buffer.size();
+    }
+
+    std::string_view line(buffer.data() + line_start, line_end - line_start);
+    if (Utils::trim(line).empty()) {
+      line_start = line_end + 1;
+      continue;
+    }
+
+    auto tokens{Utils::split(line, ',')};
+
+    if (tokens.size() != column_info.size()) {
+      std::cerr << "line " << line_number << " is malformed, skipping...\n";
+      line_start = line_end + 1;
+      ++line_number;
+      continue;
+    }
+
+    for (size_t i{0}; i < column_info.size(); ++i) {
+      std::string_view value{Utils::trim(tokens[i])};
+      auto& column{columns.at(column_info[i])};
+      std::visit(
+          [&](auto& col) {
+            using T = std::decay_t<decltype(col)>;
+            if constexpr (std::is_same_v<T, Column<int>>) {
+              std::optional<int> parsed_value{Utils::parse<int>(value)};
+              col.append(parsed_value);
+              if (!parsed_value.has_value()) {
+                col.increment_null_count();
+              }
+            } else if constexpr (std::is_same_v<T, Column<double>>) {
+              std::optional<double> parsed_value{Utils::parse<double>(value)};
+              col.append(parsed_value);
+              if (!parsed_value.has_value()) {
+                col.increment_null_count();
+              }
+            } else if constexpr (std::is_same_v<T, Column<std::string>>) {
+              std::optional<std::string> parsed_value{
+                  value.empty() ? std::nullopt
+                                : std::make_optional<std::string>(value)};
+              col.append(parsed_value);
+
+              if (!parsed_value.has_value()) {
+                col.increment_null_count();
+              }
+            }
+          },
+          column);
+    }
+
+    ++rows;
+    line_start = line_end + 1;
+    ++line_number;
+  }
 }
-*/
+
+void DataFrame::read_json(const std::string& json) {}
 
 size_t DataFrame::size() const { return rows * cols; }
 
@@ -40,9 +153,177 @@ void DataFrame::tail(size_t n) const {
 }
 
 void DataFrame::info() const {
-  // row number (0 index range)
-  // columns info (number, types) in order
-  // memory usage
+  std::cout << "------------- summary -------------\n"
+            << "rows: " << rows << "\n"
+            << "columns: " << cols << "\n";
+
+  std::vector<int> widths{};  // for formating
+  widths.reserve(column_info.size() + 1);
+
+  std::array<std::string, 4> header{" ", "column", "null", "type"};
+  for (size_t i{0}; i < header.size(); ++i) {
+    widths.push_back(header[i].size() + 5);
+    std::cout << std::setw(widths.back()) << header[i];
+  }
+
+  std::cout << "\n";
+
+  for (size_t i{0}; i < column_info.size(); ++i) {
+    int w{0};
+
+    std::cout << std::setw(widths[w++]) << i;
+    std::cout << std::setw(widths[w++]) << column_info[i];
+
+    const auto& column{columns.at(column_info[i])};
+
+    std::visit(
+        [&w, &widths](const auto& col) {
+          using T = std::decay_t<decltype(col)>;
+
+          std::cout << std::setw(widths[w++]);
+          std::cout << col.get_null_count();
+
+          std::cout << std::setw(widths[w++]);
+          if constexpr (std::is_same_v<T, Column<int>>) {
+            std::cout << "integer";
+          } else if constexpr (std::is_same_v<T, Column<double>>) {
+            std::cout << "double";
+          } else if constexpr (std::is_same_v<T, Column<std::string>>) {
+            std::cout << "string";
+          }
+        },
+        column);
+
+    std::cout << "\n";
+  }
+
+  std::cout << "memory usage: " << this->size() << " bytes\n"
+            << "-----------------------------------\n";
+}
+
+void DataFrame::normalize_length() {
+  for (auto& column : std::views::values(columns)) {
+    std::visit(
+        [&](auto& col) {
+          size_t diff{rows - col.size()};
+          if (diff == 0) {
+            return;
+          }
+
+          for (size_t i{0}; i < diff; ++i) {
+            col.append(std::nullopt);
+          }
+
+          col.set_null_count(col.get_null_count() + diff);
+        },
+        column);
+  }
+}
+
+std::unordered_map<std::string, ColumnType> DataFrame::infer_types(
+    std::string_view data, const std::vector<std::string_view>& headers,
+    const std::unordered_map<std::string, ColumnType>& types) const {
+  std::unordered_map<std::string, ColumnType> all_types{types};
+
+  // mapping to track parseable states and column index
+  struct InferenceState {
+    size_t index;
+    bool as_int{true};
+    bool as_double{true};
+  };
+  std::unordered_map<std::string, InferenceState> column_states{};
+
+  // track states for columns not specified by input mapping
+  for (size_t i{0}; i < headers.size(); ++i) {
+    std::string col{std::string(headers[i])};
+    if (!all_types.contains(col)) {
+      column_states[col] = InferenceState{i};
+    }
+  }
+
+  size_t line_start{data.find('\n') + 1};
+  int line_number{2};
+
+  while (line_start < data.size() &&
+         line_number < 100) {  // read first 100 lines
+    size_t line_end{data.find('\n', line_start)};
+    if (line_end == std::string_view::npos) {
+      line_end = data.size();
+    }
+
+    std::string_view line(data.data() + line_start, line_end - line_start);
+
+    if (Utils::trim(line).empty()) {
+      line_start = line_end + 1;
+      continue;
+    }
+
+    auto tokens{Utils::split(line, ',')};
+
+    for (auto& [col, state] : column_states) {
+      if (!state.as_int && !state.as_double) {
+        continue;
+      }
+
+      if (state.index >= tokens.size()) {
+        continue;
+      }
+      std::string_view value{Utils::trim(tokens[state.index])};
+
+      if (value.empty()) {
+        continue;
+      }
+
+      if (state.as_int && !Utils::try_parse<int>(value)) {
+        state.as_int = false;
+      }
+      if (state.as_double && !Utils::try_parse<double>(value)) {
+        state.as_double = false;
+      }
+    }
+
+    line_start = line_end + 1;
+    ++line_number;
+  }
+
+  for (const auto& [col, state] : column_states) {
+    if (state.as_int) {
+      all_types[col] = ColumnType::Integer;
+    } else if (state.as_double) {
+      all_types[col] = ColumnType::Double;
+    } else {
+      all_types[col] = ColumnType::String;
+    }
+  }
+
+  return all_types;
+}
+
+void DataFrame::create_columns(
+    const std::vector<std::string_view>& headers,
+    const std::unordered_map<std::string, ColumnType>& types, size_t size) {
+  cols = headers.size();
+  column_info.reserve(headers.size());
+
+  for (const auto& col : headers) {
+    column_info.emplace_back(col);
+    const std::string& column{column_info.back()};
+
+    ColumnType type{types.at(column)};
+
+    switch (type) {
+      case ColumnType::Integer:
+        columns[column] = Column<int>(size);
+        break;
+      case ColumnType::Double:
+        columns[column] = Column<double>(size);
+        break;
+      case ColumnType::String:
+      default:
+        columns[column] = Column<std::string>(size);
+        break;
+    }
+  }
 }
 
 void DataFrame::print(size_t start, size_t end) const {
@@ -54,7 +335,7 @@ void DataFrame::print(size_t start, size_t end) const {
 
   for (const auto& column_name : column_info) {
     // set widths according to column name size
-    widths.push_back(column_name.size() + 5);
+    widths.push_back(column_name.size() + 8);
     std::cout << std::setw(widths.back()) << column_name;
   }
 

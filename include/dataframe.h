@@ -1,7 +1,6 @@
 #pragma once
 
 #include <algorithm>
-#include <chrono>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -10,6 +9,12 @@
 #include <vector>
 
 #include "column.h"
+
+enum class ColumnType {
+  Integer,
+  Double,
+  String,
+};
 
 using ColumnVariant =
     std::variant<Column<int>, Column<double>, Column<std::string>>;
@@ -36,15 +41,26 @@ class DataFrame {
     for (size_t i{}; i < cn.size(); ++i) {
       columns[cn[i]] = Column<T>(d[i]);
     }
-
     column_info = std::move(cn);
 
-    // assume input has same number of rows for now
     rows = d[0].size();
+    bool equal_lengths{true};
+    for (size_t i{1}; i < d.size(); ++i) {
+      if (rows < d[i].size()) {
+        equal_lengths = false;  // flag to normalize lengths
+        rows = d[i].size();     // assign rows to max column length
+      }
+    }
     cols = column_info.size();
+
+    if (!equal_lengths) {
+      normalize_length();
+    }
   }
 
-  // void read_csv(const std::string& csv);
+  void read_csv(const std::string& csv,
+                const std::unordered_map<std::string, ColumnType>& types = {});
+  void read_json(const std::string& json);
 
   size_t size() const;
   bool empty() const;
@@ -76,10 +92,27 @@ class DataFrame {
       throw std::runtime_error("column already exists in dataframe");
     }
 
+    column_info.emplace_back(col_name);
     columns[col_name] = Column<T>(data);
     cols++;
+
+    if (rows == data.size()) {
+      return;
+    }
+
+    if (rows < data.size()) {
+      rows = data.size();  // new max length column
+    }
+    normalize_length();
   }
 
  private:
+  void normalize_length();
+  std::unordered_map<std::string, ColumnType> infer_types(
+      std::string_view data, const std::vector<std::string_view>& headers,
+      const std::unordered_map<std::string, ColumnType>& types) const;
+  void create_columns(const std::vector<std::string_view>& headers,
+                      const std::unordered_map<std::string, ColumnType>& types,
+                      size_t size);
   void print(size_t start, size_t end) const;
 };
