@@ -7,8 +7,18 @@ class ColumnTypedTest : public ::testing::Test {
  protected:
   using Col = Column<T>;
 
+  ColumnType get_test_type() {
+    if constexpr (std::is_same_v<T, int64_t>) {
+      return ColumnType::Int64;
+    } else if constexpr (std::is_same_v<T, double>) {
+      return ColumnType::Double;
+    } else if constexpr (std::is_same_v<T, std::string>) {
+      return ColumnType::String;
+    }
+  }
+
   T get_test_value(int index) {
-    if constexpr (std::is_same_v<T, int>) {
+    if constexpr (std::is_same_v<T, int64_t>) {
       return 10 + index;
     } else if constexpr (std::is_same_v<T, double>) {
       return 1.5 * (index + 1);
@@ -16,9 +26,19 @@ class ColumnTypedTest : public ::testing::Test {
       return "test" + std::to_string(index);
     }
   }
+
+  T get_null_test_value() {
+    if constexpr (std::is_same_v<T, int64_t>) {
+      return std::numeric_limits<int64_t>::min();
+    } else if constexpr (std::is_same_v<T, double>) {
+      return std::numeric_limits<double>::quiet_NaN();
+    } else if constexpr (std::is_same_v<T, std::string>) {
+      return "";
+    }
+  }
 };
 
-using MyTypes = ::testing::Types<int, double, std::string>;
+using MyTypes = ::testing::Types<int64_t, double, std::string>;
 TYPED_TEST_SUITE(ColumnTypedTest, MyTypes);
 
 TYPED_TEST(ColumnTypedTest, DefaultConstructor) {
@@ -30,13 +50,13 @@ TYPED_TEST(ColumnTypedTest, DefaultConstructor) {
 
 TYPED_TEST(ColumnTypedTest, VectorConstructor) {
   int n{3};
-  std::vector<std::optional<TypeParam>> vec{};
+  std::vector<TypeParam> vec{};
 
   for (int i{0}; i < n; ++i) {
     vec.push_back(this->get_test_value(i));
   }
 
-  typename TestFixture::Col col(vec);
+  typename TestFixture::Col col(vec, this->get_test_type());
 
   EXPECT_EQ(col.size(), vec.size());
   EXPECT_EQ(col.get_null_count(), 0);
@@ -46,28 +66,28 @@ TYPED_TEST(ColumnTypedTest, VectorConstructor) {
   }
 }
 
-TYPED_TEST(ColumnTypedTest, VectorConstructorWithNullOpt) {
+TYPED_TEST(ColumnTypedTest, VectorConstructorWithNull) {
   int n{4};
-  std::vector<std::optional<TypeParam>> vec{};
+  std::vector<TypeParam> vec{};
 
   for (int i{0}; i < n; ++i) {
     if (i % 2 == 0) {
       vec.push_back(this->get_test_value(i));
     } else {
-      vec.push_back(std::nullopt);
+      vec.push_back(this->get_null_test_value());
     }
   }
 
-  typename TestFixture::Col col(vec);
+  typename TestFixture::Col col(vec, this->get_test_type());
 
   EXPECT_EQ(col.size(), 4);
   EXPECT_EQ(col.get_null_count(), 2);
 
   for (int i{0}; i < n; ++i) {
     if (i % 2 == 0) {
-      EXPECT_EQ(col[i].value(), this->get_test_value(i));
+      EXPECT_EQ(col[i], this->get_test_value(i));
     } else {
-      EXPECT_FALSE(col[i].has_value());
+      EXPECT_TRUE(Utils::is_null(col[i]));
     }
   }
 }
@@ -81,17 +101,17 @@ TYPED_TEST(ColumnTypedTest, AppendValue) {
 
   EXPECT_EQ(col.size(), 1);
   EXPECT_EQ(col.get_null_count(), 0);
-  EXPECT_EQ(col[0].value(), value);
+  EXPECT_EQ(col[0], value);
 }
 
 TYPED_TEST(ColumnTypedTest, AppendNull) {
   typename TestFixture::Col col{};
 
-  col.append(std::nullopt);
+  col.append(this->get_null_test_value());
 
   EXPECT_EQ(col.size(), 1);
   EXPECT_EQ(col.get_null_count(), 1);
-  EXPECT_FALSE(col[0].has_value());
+  EXPECT_TRUE(Utils::is_null(col[0]));
 }
 
 TYPED_TEST(ColumnTypedTest, OperatorThrowsOutOfRange) {

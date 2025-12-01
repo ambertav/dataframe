@@ -7,25 +7,21 @@
 #include <unordered_map>
 #include <variant>
 
-using RowVariant = std::variant<std::optional<int>, std::optional<double>,
-                                std::optional<std::string>>;
+#include "utils.h"
+
+using RowVariant = std::variant<int64_t, double, std::string>;
 
 struct Row {
   std::unordered_map<std::string, RowVariant> data;
 
   template <typename T>
-  std::optional<T> get(const std::string& column_name) const {
+  T get(const std::string& column_name) const {
     auto it{data.find(column_name)};
     if (it == data.end()) {
-      return std::nullopt;
+      return Utils::get_null<T>();
     }
 
-    auto* value{std::get_if<std::optional<T>>(&it->second)};
-    if (value.has_value()) {
-      return *value;
-    } else {
-      return std::nullopt;
-    }
+    return (*std::get_if<T>(&it->second));
   }
 
   const RowVariant& operator[](const std::string& column_name) const {
@@ -46,10 +42,10 @@ struct Row {
 
           std::visit(
               [&os](const auto& val) {
-                if (val.has_value()) {
-                  os << *val;
-                } else {
+                if (Utils::is_null(val)) {
                   os << "NULL";
+                } else {
+                  os << val;
                 }
               },
               value);

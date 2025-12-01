@@ -42,6 +42,28 @@ inline std::vector<std::string_view> split(std::string_view sv,
 }
 
 template <typename T>
+inline T get_null() {
+  if constexpr (std::is_same_v<T, int64_t>) {
+    return std::numeric_limits<int64_t>::min();
+  } else if constexpr (std::is_same_v<T, double>) {
+    return std::numeric_limits<double>::quiet_NaN();
+  } else if constexpr (std::is_same_v<T, std::string>) {
+    return "";
+  }
+}
+
+template <typename T>
+inline bool is_null(const T& value) {
+  if constexpr (std::is_same_v<T, int64_t>) {
+    return value == std::numeric_limits<int64_t>::min();
+  } else if constexpr (std::is_same_v<T, double>) {
+    return std::isnan(value);
+  } else if constexpr (std::is_same_v<T, std::string>) {
+    return value.empty();
+  }
+}
+
+template <typename T>
 inline bool try_parse(std::string_view sv) {
   T result{};
   auto [ptr, ec]{std::from_chars(sv.data(), sv.data() + sv.size(), result)};
@@ -49,14 +71,14 @@ inline bool try_parse(std::string_view sv) {
 }
 
 template <typename T>
-inline std::optional<T> parse(std::string_view sv) {
+inline T parse(std::string_view sv) {
   T result{};
   auto [ptr, ec]{std::from_chars(sv.data(), sv.data() + sv.size(), result)};
 
   if (ec == std::errc{} && ptr == sv.data() + sv.size()) {
     return result;
   } else {
-    return std::nullopt;
+    return get_null<T>();
   }
 }
 

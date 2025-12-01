@@ -7,18 +7,13 @@
 #include <unordered_map>
 #include <variant>
 #include <vector>
+#include <functional>
 
 #include "column.h"
 #include "row.h"
 
-enum class ColumnType {
-  Integer,
-  Double,
-  String,
-};
-
 using ColumnVariant =
-    std::variant<Column<int>, Column<double>, Column<std::string>>;
+    std::variant<Column<int64_t>, Column<double>, Column<std::string>>;
 
 class DataFrame {
  private:
@@ -38,7 +33,7 @@ class DataFrame {
   explicit DataFrame(std::vector<std::string> cn);
   template <typename T>
   explicit DataFrame(std::vector<std::string> cn,
-                     const std::vector<std::vector<std::optional<T>>>& d) {
+                     const std::vector<std::vector<T>>& d) {
     if (d.size() != cn.size()) {
       throw std::runtime_error("column count does not match");
     }
@@ -113,8 +108,7 @@ class DataFrame {
   }
 
   template <typename T>
-  void add_column(const std::string& column_name,
-                  const std::vector<std::optional<T>>& data) {
+  void add_column(const std::string& column_name, const std::vector<T>& data) {
     auto it{std::ranges::find(column_info, column_name)};
     if (it != column_info.end()) {
       throw std::runtime_error("column already exists in dataframe");
@@ -142,18 +136,7 @@ class DataFrame {
   // =========================
 
   template <typename T>
-  void add_row(std::unordered_map<std::string, T>&& data) {
-    std::unordered_map<std::string, std::optional<T>> optional_data{};
-    optional_data.reserve(data.size());
-
-    for (auto& [col, val] : data) {
-      optional_data.emplace(std::move(col), std::move(val));
-    }
-    add_row(std::move(optional_data));
-  }
-
-  template <typename T>
-  void add_row(const std::unordered_map<std::string, std::optional<T>>& data) {
+  void add_row(const std::unordered_map<std::string, T>& data) {
     for (const auto& [column_name, val] : data) {
       if (!columns.contains(column_name)) {
         throw std::invalid_argument("invalid data column '" + column_name +
@@ -162,10 +145,10 @@ class DataFrame {
     }
 
     for (const auto& column_name : column_info) {
-      auto it{data.find(column_name)};
-      std::optional<T> value{(it == data.end()) ? std::nullopt : it->second};
-
       auto& column{columns.at(column_name)};
+
+      auto it{data.find(column_name)};
+      T value{(it == data.end()) ? Utils::get_null<T>() : it->second};
 
       std::visit(
           [&](auto& col) {
@@ -187,12 +170,6 @@ class DataFrame {
 
   template <typename T>
   void update(size_t index, const std::string& column_name, const T& value) {
-    update(index, column_name, std::optional<T>(value));
-  }
-
-  template <typename T>
-  void update(size_t index, const std::string& column_name,
-              const std::optional<T>& value) {
     if (index >= rows) {
       throw std::out_of_range("index out of range");
     }
@@ -222,6 +199,50 @@ class DataFrame {
 
   void drop_row(size_t index);
 
+  // =========================
+  // cleaning methods
+  // =========================
+
+  void dropna();
+  void drop_duplicates();
+  void fillna();
+
+  // =========================
+  // filtering methods
+  // =========================
+
+  void filter(std::function<bool(size_t)> predicate);
+
+  void sort_by(std::function<bool(size_t, size_t)> comparator);
+  void sort_by(const std::string& column_name, bool ascending = true);
+
+  DataFrame select(const std::vector<std::string>& co) const;
+  DataFrame get_last(size_t n) const;
+
+  // =========================
+  // aggregation methods
+  // =========================
+
+  void describe() const;
+
+  template <typename T>
+  T maximum() const;
+
+  template <typename T>
+  T minimum() const;
+
+  template <typename T>
+  T sum() const;
+
+  template <typename T>
+  T mode() const;
+
+  template <typename T>
+  T median() const;
+
+  double mean() const;
+  double standard_deviation() const;
+  double variance() const;
 
   // =========================
   // display methods

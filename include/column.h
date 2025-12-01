@@ -1,32 +1,44 @@
 #pragma once
 
+#include <cmath>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <vector>
 
+#include "utils.h"
+
+enum class ColumnType { Int64, Double, String };
+
 template <typename T>
 class Column {
+ public:
+  using value_type = T;
+
  private:
-  std::vector<std::optional<T>> data;
+  std::vector<T> data;
+  ColumnType type;
   size_t null_count{};
 
  public:
   Column() = default;
-  Column(size_t size_reserve) { data.reserve(size_reserve); }
+  Column(ColumnType t, size_t size_reserve) : type(t) {
+    data.reserve(size_reserve);
+  }
 
-  Column(const std::vector<std::optional<T>>& d) {
+  Column(const std::vector<T>& d, ColumnType t) : type(t) {
     data.reserve(d.size());
 
     for (const auto& x : d) {
-      data.emplace_back(x);
-      if (!x.has_value()) {
+      if (Utils::is_null(x)) {
         ++null_count;
       }
+      data.emplace_back(x);
     }
   }
 
-  using iterator = typename std::vector<std::optional<T>>::iterator;
-  using const_iterator = typename std::vector<std::optional<T>>::const_iterator;
+  using iterator = typename std::vector<T>::iterator;
+  using const_iterator = typename std::vector<T>::const_iterator;
 
   size_t get_null_count() const { return null_count; }
 
@@ -36,14 +48,16 @@ class Column {
 
   bool empty() const { return data.empty(); }
 
-  void append(std::optional<T> value) {
-    if (!value.has_value()) {
+  void append(T value) {
+    if (Utils::is_null(value)) {
       ++null_count;
     }
     data.emplace_back(std::move(value));
   }
 
-  std::optional<T>& operator[](size_t i) {
+  ColumnType get_type() { return type; }
+
+  T& operator[](size_t i) {
     if (i >= data.size()) {
       throw std::out_of_range("column index out of range");
     }
@@ -51,7 +65,7 @@ class Column {
     return data[i];
   }
 
-  const std::optional<T>& operator[](size_t i) const {
+  const T& operator[](size_t i) const {
     if (i >= data.size()) {
       throw std::out_of_range("column index out of range");
     }
@@ -60,13 +74,12 @@ class Column {
   }
 
   void erase(size_t index) {
-    if (index >= data.size())
-    {
-        throw std::out_of_range("column index out of range");
+    if (index >= data.size()) {
+      throw std::out_of_range("column index out of range");
     }
 
-    if (!data[index].has_value()) {
-        --null_count;
+    if (Utils::is_null<T>(data[index])) {
+      --null_count;
     }
 
     data.erase(data.begin() + index);
@@ -84,11 +97,11 @@ class Column {
 
   const_iterator cend() const noexcept { return data.cend(); }
 
-  std::optional<T>& front() { return data.front(); }
+  T& front() { return data.front(); }
 
-  const std::optional<T>& front() const { return data.front(); }
+  const T& front() const { return data.front(); }
 
-  std::optional<T>& back() { return data.back(); }
+  T& back() { return data.back(); }
 
-  const std::optional<T>& back() const { return data.back(); }
+  const T& back() const { return data.back(); }
 };

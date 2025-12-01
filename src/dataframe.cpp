@@ -98,16 +98,12 @@ void DataFrame::from_csv(
       std::visit(
           [&](auto& col) {
             using T = std::decay_t<decltype(col)>;
-            if constexpr (std::is_same_v<T, Column<int>>) {
-              col.append(Utils::parse<int>(value));
+            if constexpr (std::is_same_v<T, Column<int64_t>>) {
+              col.append(Utils::parse<int64_t>(value));
             } else if constexpr (std::is_same_v<T, Column<double>>) {
               col.append(Utils::parse<double>(value));
             } else if constexpr (std::is_same_v<T, Column<std::string>>) {
-              std::optional<std::string> parsed_value{};
-              if (!value.empty()) {
-                parsed_value.emplace(value);
-              }
-              col.append(parsed_value);
+              col.append(std::string(value));
             }
           },
           column);
@@ -154,7 +150,8 @@ void DataFrame::drop_column(const std::string& column_name) {
 
   columns.erase(it);
 
-  std::erase_if(column_info, [&](const auto& col) { return col == column_name; });
+  std::erase_if(column_info,
+                [&](const auto& col) { return col == column_name; });
 
   --cols;
 }
@@ -174,9 +171,7 @@ Row DataFrame::get_row(size_t index) const {
 
     std::visit(
         [&column_name, &row, &index](const auto& col) {
-          const auto& val_opt{col[index]};
-
-          row.data.emplace(column_name, val_opt);
+          row.data.emplace(column_name, col[index]);
         },
         column);
   }
@@ -278,7 +273,7 @@ void DataFrame::info() const {
           std::cout << col.get_null_count();
 
           std::cout << std::setw(widths[w++]);
-          if constexpr (std::is_same_v<T, Column<int>>) {
+          if constexpr (std::is_same_v<T, Column<int64_t>>) {
             std::cout << "integer";
           } else if constexpr (std::is_same_v<T, Column<double>>) {
             std::cout << "double";
@@ -303,16 +298,15 @@ void DataFrame::normalize_length() {
   for (auto& column : std::views::values(columns)) {
     std::visit(
         [&](auto& col) {
+          using T = std::decay_t<decltype(col)>::value_type;
           size_t diff{rows - col.size()};
           if (diff == 0) {
             return;
           }
 
           for (size_t i{0}; i < diff; ++i) {
-            col.append(std::nullopt);
+            col.append(Utils::get_null<T>());
           }
-
-          col.set_null_count(col.get_null_count() + diff);
         },
         column);
   }
@@ -372,7 +366,7 @@ std::unordered_map<std::string, ColumnType> DataFrame::infer_types(
         continue;
       }
 
-      if (state.as_int && !Utils::try_parse<int>(value)) {
+      if (state.as_int && !Utils::try_parse<int64_t>(value)) {
         state.as_int = false;
       }
       if (state.as_double && !Utils::try_parse<double>(value)) {
@@ -386,7 +380,7 @@ std::unordered_map<std::string, ColumnType> DataFrame::infer_types(
 
   for (const auto& [col, state] : column_states) {
     if (state.as_int) {
-      all_types[col] = ColumnType::Integer;
+      all_types[col] = ColumnType::Int64;
     } else if (state.as_double) {
       all_types[col] = ColumnType::Double;
     } else {
@@ -410,15 +404,15 @@ void DataFrame::create_columns(
     ColumnType type{types.at(column)};
 
     switch (type) {
-      case ColumnType::Integer:
-        columns[column] = Column<int>(size);
+      case ColumnType::Int64:
+        columns[column] = Column<int64_t>(type, size);
         break;
       case ColumnType::Double:
-        columns[column] = Column<double>(size);
+        columns[column] = Column<double>(type, size);
         break;
       case ColumnType::String:
       default:
-        columns[column] = Column<std::string>(size);
+        columns[column] = Column<std::string>(type, size);
         break;
     }
   }
@@ -446,13 +440,13 @@ void DataFrame::print(size_t start, size_t end) const {
       const auto& column{columns.at(column_name)};
       std::visit(
           [&](const auto& col) {
-            const auto& val_opt{col[i]};
+            const auto& value{col[i]};
 
             // use widths set from column name
             std::cout << std::setw(widths[w++]);
 
-            if (val_opt.has_value()) {
-              std::cout << val_opt.value();
+            if (!Utils::is_null(value)) {
+              std::cout << value;
             } else {
               std::cout << "NULL";
             }
