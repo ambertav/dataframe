@@ -7,16 +7,6 @@ class ColumnTypedTest : public ::testing::Test {
  protected:
   using Col = Column<T>;
 
-  ColumnType get_test_type() {
-    if constexpr (std::is_same_v<T, int64_t>) {
-      return ColumnType::Int64;
-    } else if constexpr (std::is_same_v<T, double>) {
-      return ColumnType::Double;
-    } else if constexpr (std::is_same_v<T, std::string>) {
-      return ColumnType::String;
-    }
-  }
-
   T get_test_value(int index) {
     if constexpr (std::is_same_v<T, int64_t>) {
       return 10 + index;
@@ -56,7 +46,7 @@ TYPED_TEST(ColumnTypedTest, VectorConstructor) {
     vec.push_back(this->get_test_value(i));
   }
 
-  typename TestFixture::Col col(vec, this->get_test_type());
+  typename TestFixture::Col col(vec);
 
   EXPECT_EQ(col.size(), vec.size());
   EXPECT_EQ(col.get_null_count(), 0);
@@ -78,7 +68,7 @@ TYPED_TEST(ColumnTypedTest, VectorConstructorWithNull) {
     }
   }
 
-  typename TestFixture::Col col(vec, this->get_test_type());
+  typename TestFixture::Col col(vec);
 
   EXPECT_EQ(col.size(), 4);
   EXPECT_EQ(col.get_null_count(), 2);

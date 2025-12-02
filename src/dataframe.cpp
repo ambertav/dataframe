@@ -405,14 +405,14 @@ void DataFrame::create_columns(
 
     switch (type) {
       case ColumnType::Int64:
-        columns[column] = Column<int64_t>(type, size);
+        columns[column] = Column<int64_t>(size);
         break;
       case ColumnType::Double:
-        columns[column] = Column<double>(type, size);
+        columns[column] = Column<double>(size);
         break;
       case ColumnType::String:
       default:
-        columns[column] = Column<std::string>(type, size);
+        columns[column] = Column<std::string>(size);
         break;
     }
   }

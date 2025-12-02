@@ -17,16 +17,22 @@ class Column {
 
  private:
   std::vector<T> data;
-  ColumnType type;
+  ColumnType type{[]() constexpr {
+    if constexpr (std::is_same_v<T, int64_t>) {
+      return ColumnType::Int64;
+    } else if constexpr (std::is_same_v<T, double>) {
+      return ColumnType::Double;
+    } else if constexpr (std::is_same_v<T, std::string>) {
+      return ColumnType::String;
+    }
+  }()};
   size_t null_count{};
 
  public:
   Column() = default;
-  Column(ColumnType t, size_t size_reserve) : type(t) {
-    data.reserve(size_reserve);
-  }
+  Column(size_t size_reserve) { data.reserve(size_reserve); }
 
-  Column(const std::vector<T>& d, ColumnType t) : type(t) {
+  Column(const std::vector<T>& d) {
     data.reserve(d.size());
 
     for (const auto& x : d) {
@@ -55,7 +61,7 @@ class Column {
     data.emplace_back(std::move(value));
   }
 
-  ColumnType get_type() { return type; }
+  ColumnType type() { return type; }
 
   T& operator[](size_t i) {
     if (i >= data.size()) {
