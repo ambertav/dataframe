@@ -1,5 +1,6 @@
 #include "dataframe.h"
 
+#include <algorithm>
 #include <array>
 #include <fstream>
 #include <iomanip>
@@ -155,6 +156,46 @@ void DataFrame::drop_column(const std::string& column_name) {
 // row methods
 // =========================
 
+void DataFrame::add_row(const Row& row) { add_row(row.data); }
+
+void DataFrame::add_row(
+    const std::unordered_map<
+        std::string, std::variant<int64_t, double, std::string>>& data) {
+  for (const auto& [column_name, val] : data) {
+    if (!columns.contains(column_name)) {
+      throw std::invalid_argument("invalid data column '" + column_name +
+                                  "' not found in columns");
+    }
+  }
+
+  for (const auto& column_name : column_info) {
+    auto& column{columns.at(column_name)};
+
+    auto it{data.find(column_name)};
+
+    std::visit(
+        [&](auto& col) {
+          using T = std::decay_t<decltype(col)>::value_type;
+
+          if (it == data.end()) {
+            col.append(Utils::get_null<T>());
+          } else {
+            auto* value{std::get_if<T>(&it->second)};
+
+            if (!value) {
+              throw std::invalid_argument("invalid data type for column " +
+                                          column_name);
+            } else {
+              col.append(*value);
+            }
+          }
+        },
+        column);
+  }
+
+  ++rows;
+}
+
 Row DataFrame::get_row(size_t index) const {
   if (index >= rows) {
     throw std::out_of_range("index out of range");
@@ -273,8 +314,56 @@ DataFrame& DataFrame::drop_duplicates(const std::vector<std::string>& subset) {
 }
 
 // =========================
-// filtering methods
+// selection and sorting methods
 // =========================
+
+DataFrame& DataFrame::sort_by(const std::string& column_name,
+                              bool ascending) {
+  std::vector<size_t> indices{};
+  for (size_t i{0}; i < rows; ++i) {
+    indices.push_back(i);
+  }
+
+  auto it{columns.find(column_name)};
+  if (it == columns.end()) {
+    throw std::invalid_argument("column not found: " + column_name);
+  }
+  auto& target{it->second};
+
+  std::ranges::sort(indices, [&target, ascending](size_t a, size_t b) {
+    return std::visit(
+        [&](const auto& column) {
+          const auto& val_a = column[a];
+          const auto& val_b = column[b];
+
+          if (ascending) {
+            return val_a < val_b;
+          } else {
+            return val_a > val_b;
+          }
+        },
+        target);
+  });
+
+  for (auto& [col, column] : columns) {
+    auto sorted_column{std::visit(
+        [&](const auto& old_column) {
+          using T = std::decay_t<decltype(old_column)>::value_type;
+
+          Column<T> new_column{Column<T>(indices.size())};
+          for (size_t i{0}; i < indices.size(); ++i) {
+            new_column.append(old_column[indices[i]]);
+          }
+
+          return ColumnVariant(std::in_place_type<Column<T>>, new_column);
+        },
+        column)};
+
+    columns[col] = std::move(sorted_column);
+  }
+
+  return *this;
+}
 
 DataFrame DataFrame::select(const std::vector<std::string>& subset) const {
   if (subset.empty()) {
@@ -320,6 +409,13 @@ DataFrame DataFrame::get_last(size_t start) const {
 
   return df;
 }
+
+// =========================
+// statistical methods
+// =========================
+
+
+
 
 // =========================
 // display methods
