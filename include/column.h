@@ -47,9 +47,6 @@ class Column {
     }
   }
 
-  using iterator = typename std::vector<T>::iterator;
-  using const_iterator = typename std::vector<T>::const_iterator;
-
   size_t get_null_count() const { return null_count; }
 
   void set_null_count(size_t n) { null_count = n; }
@@ -57,6 +54,11 @@ class Column {
   size_t size() const { return data.size(); }
 
   bool empty() const { return data.empty(); }
+
+  void clear() {
+    data.clear();
+    null_count = 0;
+  }
 
   void append(T value) {
     if (Utils::is_null(value)) {
@@ -154,6 +156,11 @@ class Column {
   double sum() const {
     if (data.empty()) {
       throw std::invalid_argument("cannot get sum of empty column");
+    }
+
+    size_t non_null{data.size() - null_count};
+    if (non_null == 0) {
+      throw std::invalid_argument("cannot get median: no non-null values");
     }
 
     double sum{};
@@ -286,25 +293,21 @@ class Column {
     data.erase(data.begin() + index);
   }
 
+  void reserve(size_t capacity) { data.reserve(capacity); }
   void resize(size_t count) { data.resize(count); }
 
+  using iterator = typename std::vector<T>::iterator;
+  using const_iterator = typename std::vector<T>::const_iterator;
+
   iterator begin() { return data.begin(); }
-
   const_iterator begin() const { return data.begin(); }
-
   const_iterator cbegin() const noexcept { return data.cbegin(); }
-
   iterator end() { return data.end(); }
-
   const_iterator end() const { return data.end(); }
-
   const_iterator cend() const noexcept { return data.cend(); }
 
   T& front() { return data.front(); }
-
   const T& front() const { return data.front(); }
-
   T& back() { return data.back(); }
-
   const T& back() const { return data.back(); }
 };
