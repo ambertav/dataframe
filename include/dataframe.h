@@ -34,13 +34,13 @@ class DataFrame {
   explicit DataFrame(std::vector<std::string> cn);
   template <typename T>
   explicit DataFrame(std::vector<std::string> cn,
-                     const std::vector<std::vector<T>>& d) {
+                     std::vector<std::vector<T>>&& d) {
     if (d.size() != cn.size()) {
       throw std::runtime_error("column count does not match");
     }
 
     for (size_t i{}; i < cn.size(); ++i) {
-      columns[cn[i]] = Column<T>(d[i]);
+      columns[cn[i]] = Column<T>(std::move(d[i]));
     }
     column_info = std::move(cn);
 
@@ -59,16 +59,18 @@ class DataFrame {
     }
   }
 
+  template <typename T>
+  explicit DataFrame(std::vector<std::string> cn,
+                     const std::vector<std::vector<T>>& d)
+      : DataFrame(std::move(cn), std::vector<std::vector<T>>(d)) {}
+
   // =========================
   // file i/o methods
   // =========================
 
   void from_csv(const std::string& csv,
                 const std::unordered_map<std::string, ColumnType>& types = {});
-  void to_csv(const std::string& csv) const;
-
-  // TO-DO: simple custom json parser if necessary
-  // void read_json(const std::string& json);
+  void to_csv(const std::string& csv) const;    
 
   // =========================
   // size methods
@@ -166,6 +168,8 @@ class DataFrame {
         column);
   }
 
+  size_t update(size_t index, const Row& row);
+
   Row get_row(size_t index) const;
 
   void drop_row(size_t index);
@@ -249,6 +253,10 @@ class DataFrame {
   double mean(const std::string& column_name) const;
   double standard_deviation(const std::string& column_name) const;
   double variance(const std::string& column_name) const;
+
+  // =========================
+  // time-series methods
+  // =========================
 
   // =========================
   // display methods

@@ -28,7 +28,7 @@ TYPED_TEST_SUITE(ColumnTypedTest, MyTypes);
 
 TYPED_TEST(ColumnTypedTest, DefaultConstructor) {
   typename TestFixture::Col col;
-  EXPECT_EQ(col.size(), 0);
+  EXPECT_EQ(col.nrows(), 0);
   EXPECT_TRUE(col.empty());
   EXPECT_EQ(col.get_null_count(), 0);
 }
@@ -43,7 +43,7 @@ TYPED_TEST(ColumnTypedTest, VectorConstructor) {
 
   typename TestFixture::Col col(vec);
 
-  EXPECT_EQ(col.size(), vec.size());
+  EXPECT_EQ(col.nrows(), vec.size());
   EXPECT_EQ(col.get_null_count(), 0);
 
   for (int i{0}; i < n; ++i) {
@@ -65,7 +65,7 @@ TYPED_TEST(ColumnTypedTest, VectorConstructorWithNull) {
 
   typename TestFixture::Col col(vec);
 
-  EXPECT_EQ(col.size(), 4);
+  EXPECT_EQ(col.nrows(), 4);
   EXPECT_EQ(col.get_null_count(), 2);
 
   for (int i{0}; i < n; ++i) {
@@ -84,7 +84,7 @@ TYPED_TEST(ColumnTypedTest, AppendValue) {
 
   col.append(value);
 
-  EXPECT_EQ(col.size(), 1);
+  EXPECT_EQ(col.nrows(), 1);
   EXPECT_EQ(col.get_null_count(), 0);
   EXPECT_EQ(col[0], value);
 }
@@ -94,7 +94,7 @@ TYPED_TEST(ColumnTypedTest, AppendNull) {
 
   col.append(this->get_null_test_value());
 
-  EXPECT_EQ(col.size(), 1);
+  EXPECT_EQ(col.nrows(), 1);
   EXPECT_EQ(col.get_null_count(), 1);
   EXPECT_TRUE(Utils::is_null(col[0]));
 }

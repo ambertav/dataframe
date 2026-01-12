@@ -3,6 +3,7 @@
 #include <charconv>
 #include <string_view>
 #include <vector>
+#include <array>
 
 namespace Utils {
 inline std::string_view trim(std::string_view sv) {
@@ -85,5 +86,8 @@ inline T parse(std::string_view sv) {
     return get_null<T>();
   }
 }
+
+inline constexpr std::array<const char*, 8> describe_order{
+      "count", "mean", "std", "min", "25%", "50%", "75%", "max"};
 
 }  // namespace Utils

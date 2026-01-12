@@ -111,8 +111,39 @@ void DataFrame::from_csv(
   }
 }
 
-// TO-DO: simple custom json parser if necessary
-// void DataFrame::read_json(const std::string& json) {}
+void DataFrame::to_csv(const std::string& csv) const {
+  std::ofstream file{csv};
+  if (!file.is_open()) {
+    throw std::runtime_error("failed to open file: " + csv);
+  }
+
+  for (size_t i{0}; i < column_info.size(); ++i) {
+    file << column_info[i];
+    if (i < column_info.size() - 1) {
+      file << ',';
+    }
+  }
+  file << '\n';
+
+  for (size_t i{0}; i < rows; ++i) {
+    for (size_t j{0}; j < column_info.size(); ++j) {
+      const auto& col{columns.at(column_info[j])};
+      std::visit(
+          [&](const auto& column) {
+            using T = std::decay_t<decltype(column)>::value_type;
+            if (!Utils::is_null<T>(column[i])) {
+              file << column[i];
+            }
+          },
+          col);
+
+      if (j < column_info.size() - 1) {
+        file << ',';
+      }
+    }
+    file << '\n';
+  }
+}
 
 // =========================
 // size methods
@@ -194,6 +225,34 @@ void DataFrame::add_row(
   }
 
   ++rows;
+}
+
+size_t DataFrame::update(size_t index, const Row& row) {
+  if (index >= rows) {
+    throw std::out_of_range("index is out of range");
+  }
+
+  validate_subset(row.column_names());
+
+  size_t count{};
+  for (const auto& [column_name, value] : row) {
+    auto& col{columns.at(column_name)};
+
+    std::visit(
+        [&](auto& column) {
+          using T = std::decay_t<decltype(column)>::value_type;
+
+          if (!std::holds_alternative<T>(value)) {
+            throw std::bad_variant_access();
+          } else {
+            column[index] = *(std::get_if<T>(&value));
+            ++count;
+          }
+        },
+        col);
+  }
+
+  return count;
 }
 
 Row DataFrame::get_row(size_t index) const {
@@ -413,6 +472,58 @@ DataFrame DataFrame::get_last(size_t start) const {
 // statistical methods
 // =========================
 
+void DataFrame::describe() const {
+    if (rows == 0) {
+        std::cout << "empty dataframe\n";
+        return;
+    }
+
+  std::unordered_map<std::string, std::vector<double>> stats_by_row{};
+  std::vector<std::string_view> col_names{};
+  col_names.reserve(column_info.size());
+
+  for (size_t i{}; i < column_info.size(); ++i) {
+    const auto& col{columns.at(column_info[i])};
+    std::visit(
+        [&](const auto& column) {
+          using T = std::decay_t<decltype(column)>::value_type;
+          if constexpr (std::is_arithmetic_v<T>) {
+            col_names.emplace_back(column_info[i]);
+
+            stats_by_row["count"].emplace_back(column.nrows() -
+                                               column.get_null_count());
+            stats_by_row["mean"].emplace_back(column.mean());
+            stats_by_row["std"].emplace_back(column.standard_deviation());
+            stats_by_row["min"].emplace_back(column.minimum());
+            stats_by_row["25%"].emplace_back(column.percentile(0.25));
+            stats_by_row["50%"].emplace_back(column.percentile(0.5));
+            stats_by_row["75%"].emplace_back(column.percentile(0.75));
+            stats_by_row["max"].emplace_back(column.maximum());
+          }
+        },
+        col);
+  }
+
+  if (col_names.empty()) {
+    std::cout<< "no numerical columns to describe\n";
+    return;
+  }
+
+  std::cout << std::setw(10) << "";
+  for (const auto& name : col_names) {
+    std::cout << std::setw(12) << name;
+  }
+  std::cout << '\n';
+
+  for (const auto& stat : Utils::describe_order) {
+    std::cout << std::setw(10) << stat;
+    for (const auto& value : stats_by_row[stat]) {
+      std::cout << std::setw(12) << std::fixed << std::setprecision(2) << value;
+    }
+    std::cout << '\n';
+  }
+}
+
 double DataFrame::sum(const std::string& column_name) const {
   return call_statistical_column_method(
       column_name, [](const auto& col) { return col.sum(); });
@@ -500,7 +611,7 @@ void DataFrame::info() const {
     std::cout << std::setw(widths.back()) << header[i];
   }
 
-  std::cout << "\n";
+  std::cout << '\n';
 
   for (size_t i{0}; i < column_info.size(); ++i) {
     int w{0};
@@ -528,7 +639,7 @@ void DataFrame::info() const {
         },
         column);
 
-    std::cout << "\n";
+    std::cout << '\n';
   }
 
   std::cout << "memory usage: " << this->size() << " bytes\n"
@@ -544,7 +655,7 @@ void DataFrame::normalize_length() {
     std::visit(
         [&](auto& col) {
           using T = std::decay_t<decltype(col)>::value_type;
-          size_t diff{rows - col.size()};
+          size_t diff{rows - col.nrows()};
           if (diff == 0) {
             return;
           }
@@ -675,7 +786,7 @@ void DataFrame::compact_rows(const std::vector<size_t>& removal_indices) {
         [&](auto& c) {
           auto shifter = [&](auto& column) {
             size_t write_position{};
-            for (size_t i{0}; i < column.size(); ++i) {
+            for (size_t i{0}; i < column.nrows(); ++i) {
               if (remove[i] == false) {
                 column[write_position++] = std::move(column[i]);
               }

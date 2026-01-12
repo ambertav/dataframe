@@ -1,8 +1,10 @@
 #pragma once
 
+#include <algorithm>
 #include <iomanip>
 #include <iostream>
 #include <optional>
+#include <ranges>
 #include <string>
 #include <unordered_map>
 #include <variant>
@@ -79,6 +81,16 @@ struct Row {
       it->second = std::move(value);
       return *this;
     }
+  }
+
+  std::vector<std::string> column_names() const {
+    std::vector<std::string> output{};
+    output.reserve(data.size());
+
+    std::ranges::transform(data, std::back_inserter(output),
+                           [&](const auto& pair) { return pair.first; });
+
+    return output;
   }
 
   bool contains(const std::string& column_name) const {

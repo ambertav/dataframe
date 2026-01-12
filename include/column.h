@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iomanip>
 #include <iostream>
 #include <limits>
 #include <optional>
@@ -51,7 +52,7 @@ class Column {
 
   void set_null_count(size_t n) { null_count = n; }
 
-  size_t size() const { return data.size(); }
+  size_t nrows() const { return data.size(); }
 
   bool empty() const { return data.empty(); }
 
@@ -68,6 +69,33 @@ class Column {
   }
 
   ColumnType get_type() { return type; }
+
+  void describe() const {
+    if (data.empty()) {
+      std::cout << "column is empty\n";
+      return;
+    }
+
+    if constexpr (std::is_arithmetic_v<T>) {
+      std::unordered_map<std::string, double> stats_by_row{};
+      stats_by_row["count"] = nrows() - get_null_count();
+      stats_by_row["mean"] = mean();
+      stats_by_row["std"] = standard_deviation();
+      stats_by_row["min"] = minimum();
+      stats_by_row["25%"] = percentile(0.25);
+      stats_by_row["50%"] = percentile(0.5);
+      stats_by_row["75%"] = percentile(0.75);
+      stats_by_row["max"] = maximum();
+
+      for (const auto& stat : Utils::describe_order) {
+        std::cout << std::setw(10) << stat;
+        std::cout << std::setw(12) << std::fixed << std::setprecision(2)
+                  << stats_by_row[stat] << '\n';
+      }
+    } else {
+      throw std::invalid_argument("cannot describe a non-numerical column");
+    }
+  }
 
   // =========================
   // statistical methods
@@ -151,6 +179,47 @@ class Column {
     }
 
     return modes;
+  }
+
+  double percentile(double p) const {
+    if (data.empty()) {
+      throw std::invalid_argument("cannot get median of empty column");
+    }
+
+    size_t non_null{data.size() - null_count};
+    if (non_null == 0) {
+      throw std::invalid_argument("cannot get median: no non-null values");
+    }
+
+    if (p < 0.0 || p > 1.0) {
+      throw std::invalid_argument("percentile must be between 0 and 1");
+    }
+
+    if constexpr (std::is_arithmetic_v<T>) {
+      std::vector<T> copy{};
+      copy.reserve(data.size() - null_count);
+      for (const auto& value : data) {
+        if (!Utils::is_null(value)) {
+          copy.push_back(value);
+        }
+      }
+
+      std::sort(copy.begin(), copy.end());
+
+      double index{p * (copy.size() + 1)};
+      size_t lower{static_cast<size_t>(std::floor(index))};
+      size_t upper{static_cast<size_t>(std::ceil(index))};
+
+      if (lower == upper) {
+        return static_cast<double>(copy[lower]);
+      }
+
+      double fraction{index - lower};
+      return static_cast<double>(copy[lower]) * (1 - fraction) +
+             static_cast<double>(copy[upper]) * fraction;
+    } else {
+      throw std::invalid_argument("column is not numeric type");
+    }
   }
 
   double sum() const {
