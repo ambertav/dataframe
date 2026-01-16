@@ -68,7 +68,7 @@ class Column {
     data.emplace_back(std::move(value));
   }
 
-  ColumnType get_type() { return type; }
+  ColumnType get_type() const { return type; }
 
   void describe() const {
     if (data.empty()) {

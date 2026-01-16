@@ -16,6 +16,15 @@
 DataFrame::DataFrame(std::vector<std::string> cn)
     : column_info(std::move(cn)) {}
 
+DataFrame::DataFrame(size_t r, std::vector<std::string> cn,
+                     std::unordered_map<std::string, ColumnVariant> d)
+    : rows(r),
+      cols(cn.size()),
+      column_info(std::move(cn)),
+      columns(std::move(d)) {
+  normalize_length();
+}
+
 // =========================
 // i/o and serialization methods
 // =========================
@@ -145,9 +154,138 @@ void DataFrame::to_csv(const std::string& csv) const {
   }
 }
 
-void DataFrame::from_binary(const std::string& path) {}
+DataFrame DataFrame::from_bytes(const std::vector<std::byte>& bytes) {
+  size_t offset{};
 
-void DataFrame::to_binary(const std::string& path) const {}
+  size_t nr{*(reinterpret_cast<const size_t*>(bytes.data() + offset))};
+  offset += sizeof(size_t);
+
+  size_t nc{*(reinterpret_cast<const size_t*>(bytes.data() + offset))};
+  offset += sizeof(size_t);
+
+  std::vector<std::string> names{};
+  for (size_t i{}; i < nc; ++i) {
+    uint32_t length{
+        *(reinterpret_cast<const uint32_t*>(bytes.data() + offset))};
+    offset += sizeof(uint32_t);
+
+    const char* name_data{reinterpret_cast<const char*>(bytes.data() + offset)};
+    names.emplace_back(name_data, length);
+    offset += length;
+  }
+
+  std::unordered_map<std::string, ColumnVariant> col_map{};
+  for (size_t i{}; i < nc; ++i) {
+    const std::string& col_name{names[i]};
+
+    ColumnType type{
+        *(reinterpret_cast<const ColumnType*>(bytes.data() + offset))};
+    offset += sizeof(ColumnType);
+
+    size_t col_data_size{};
+    if (type == ColumnType::Int64) {
+      col_data_size = nr * sizeof(int64_t);
+    } else if (type == ColumnType::Double) {
+      col_data_size = nr * sizeof(double);
+    } else if (type == ColumnType::String) {
+      size_t temp_offset = offset;
+      for (size_t row{}; row < nr; ++row) {
+        uint32_t str_length{
+            *(reinterpret_cast<const uint32_t*>(bytes.data() + temp_offset))};
+        temp_offset += sizeof(uint32_t) + str_length;
+      }
+      col_data_size = temp_offset - offset;
+    } else {
+      throw std::runtime_error("unknown column type during deserialization");
+    }
+
+    std::vector<std::byte> column_bytes(bytes.begin() + offset,
+                                        bytes.begin() + offset + col_data_size);
+    offset += col_data_size;
+
+    if (type == ColumnType::Int64) {
+      col_map[col_name] = Column<int64_t>::from_bytes(column_bytes);
+    } else if (type == ColumnType::Double) {
+      col_map[col_name] = Column<double>::from_bytes(column_bytes);
+    } else if (type == ColumnType::String) {
+      col_map[col_name] = Column<std::string>::from_bytes(column_bytes);
+    }
+  }
+
+  return DataFrame(nr, std::move(names), std::move(col_map));
+}
+
+DataFrame DataFrame::from_binary(const std::string& path) {
+  std::ifstream file(path, std::ios::binary);
+  if (!file.is_open()) {
+    throw std::runtime_error("failed to open file: " + path);
+  }
+
+  file.seekg(0, std::ios::end);
+  auto file_size = file.tellg();
+  file.seekg(0, std::ios::beg);
+
+  std::vector<std::byte> bytes(file_size);
+  file.read(reinterpret_cast<char*>(bytes.data()), file_size);
+
+  file.close();
+
+  return from_bytes(bytes);
+}
+
+std::vector<std::byte> DataFrame::to_bytes() const {
+  size_t metadata_size{sizeof(size_t) * 2};  // for rows and columns
+  for (const auto& name : column_info) {
+    metadata_size += sizeof(uint32_t) + name.size();
+  }
+  metadata_size += cols * sizeof(ColumnType);
+
+  std::vector<std::byte> result{};
+  result.reserve(metadata_size);
+
+  const std::byte* rows_bytes{reinterpret_cast<const std::byte*>(&rows)};
+  result.insert(result.end(), rows_bytes, rows_bytes + sizeof(size_t));
+
+  const std::byte* cols_bytes{reinterpret_cast<const std::byte*>(&cols)};
+  result.insert(result.end(), cols_bytes, cols_bytes + sizeof(size_t));
+
+  for (const auto& name : column_info) {
+    uint32_t length{static_cast<uint32_t>(name.size())};
+    const std::byte* length_bytes{reinterpret_cast<const std::byte*>(&length)};
+    result.insert(result.end(), length_bytes, length_bytes + sizeof(uint32_t));
+
+    const std::byte* name_bytes{
+        reinterpret_cast<const std::byte*>(name.data())};
+    result.insert(result.end(), name_bytes, name_bytes + name.size());
+  }
+
+  for (const auto& name : column_info) {
+    const auto* column{get_column(name)};
+    ColumnType column_type{
+        std::visit([](const auto& col) { return col.get_type(); }, *column)};
+
+    const std::byte* type_bytes{
+        reinterpret_cast<const std::byte*>(&column_type)};
+    result.insert(result.end(), type_bytes, type_bytes + sizeof(ColumnType));
+
+    std::vector<std::byte> column_bytes{
+        std::visit([](const auto& col) { return col.to_bytes(); }, *column)};
+    result.insert(result.end(), column_bytes.begin(), column_bytes.end());
+  }
+
+  return result;
+}
+
+void DataFrame::to_binary(const std::string& path) const {
+  std::ofstream file(path, std::ios::binary);
+  if (!file.is_open()) {
+    throw std::runtime_error("failed to open file: " + path);
+  }
+
+  std::vector<std::byte> data{this->to_bytes()};
+  file.write(reinterpret_cast<const char*>(data.data()), data.size());
+  file.close();
+}
 
 // =========================
 // size methods

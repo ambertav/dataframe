@@ -59,11 +59,8 @@ class DataFrame {
     }
   }
 
-  template <typename T>
-  explicit DataFrame(std::vector<std::string> cn,
-                     const std::vector<std::vector<T>>& d)
-      : DataFrame(std::move(cn), std::vector<std::vector<T>>(d)) {}
-
+  explicit DataFrame(size_t r, std::vector<std::string> cn,
+                     std::unordered_map<std::string, ColumnVariant> d);
   // =========================
   // i/o and serialization methods
   // =========================
@@ -72,7 +69,10 @@ class DataFrame {
                 const std::unordered_map<std::string, ColumnType>& types = {});
   void to_csv(const std::string& csv) const;
 
-  void from_binary(const std::string& path);
+  static DataFrame from_bytes(const std::vector<std::byte>& bytes);
+  static DataFrame from_binary(const std::string& path);
+
+  std::vector<std::byte> to_bytes() const;
   void to_binary(const std::string& path) const;
 
   // =========================
