@@ -98,6 +98,65 @@ class Column {
   }
 
   // =========================
+  // serialization methods
+  // =========================
+
+  std::vector<std::byte> to_bytes() const {
+    if constexpr (std::is_arithmetic_v<T>) {
+      const std::byte* byte_ptr{
+          reinterpret_cast<const std::byte*>(data.data())};
+      const size_t total_bytes{data.size() * sizeof(T)};
+      return std::vector<std::byte>(byte_ptr, byte_ptr + total_bytes);
+    } else {
+      size_t total_bytes{};
+      for (const auto& value : data) {
+        total_bytes += sizeof(uint32_t) + value.size();
+      }
+
+      std::vector<std::byte> result{};
+      result.reserve(total_bytes);
+
+      for (const auto& value : data) {
+        uint32_t length{static_cast<uint32_t>(value.size())};
+        const std::byte* length_bytes{
+            reinterpret_cast<const std::byte*>(&length)};
+        result.insert(result.end(), length_bytes,
+                      length_bytes + sizeof(uint32_t));
+
+        const std::byte* value_bytes{
+            reinterpret_cast<const std::byte*>(value.data())};
+        result.insert(result.end(), value_bytes, value_bytes + value.size());
+      }
+      return result;
+    }
+  }
+
+  static Column<T> from_bytes(const std::vector<std::byte>& bytes) {
+    if constexpr (std::is_arithmetic_v<T>) {
+      const T* data_ptr{reinterpret_cast<const T*>(bytes.data())};
+      const size_t n{bytes.size() / sizeof(T)};
+      std::vector<T> d(data_ptr, data_ptr + n);
+      return Column<T>(std::move(d));
+    } else {
+      std::vector<std::string> d{};
+      size_t offset{};
+
+      while (offset < bytes.size()) {
+        uint32_t length{
+            *(reinterpret_cast<const uint32_t*>(bytes.data() + offset))};
+        offset += sizeof(uint32_t);
+
+        const char* str_data{
+            reinterpret_cast<const char*>(bytes.data() + offset)};
+        d.emplace_back(str_data, length);
+        offset += length;
+      }
+
+      return Column<T>(std::move(d));
+    }
+  }
+
+  // =========================
   // statistical methods
   // =========================
 
@@ -333,6 +392,10 @@ class Column {
   // =========================
   // accessor and iterators
   // =========================
+
+  bool operator==(const Column<T>& other) const { return data == other.data; }
+
+  bool operator!=(const Column<T>& other) const { return data != other.data; }
 
   T& operator[](size_t i) {
     if (i >= data.size()) {

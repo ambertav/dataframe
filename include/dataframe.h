@@ -65,12 +65,15 @@ class DataFrame {
       : DataFrame(std::move(cn), std::vector<std::vector<T>>(d)) {}
 
   // =========================
-  // file i/o methods
+  // i/o and serialization methods
   // =========================
 
   void from_csv(const std::string& csv,
                 const std::unordered_map<std::string, ColumnType>& types = {});
-  void to_csv(const std::string& csv) const;    
+  void to_csv(const std::string& csv) const;
+
+  void from_binary(const std::string& path);
+  void to_binary(const std::string& path) const;
 
   // =========================
   // size methods
@@ -132,6 +135,10 @@ class DataFrame {
     return std::get_if<Column<T>>(&it->second);
   }
 
+  const ColumnVariant* get_column(const std::string& column_name) const;
+
+  ColumnVariant* get_column(const std::string& column_name);
+
   void drop_column(const std::string& column_name);
 
   // =========================
@@ -173,6 +180,14 @@ class DataFrame {
   Row get_row(size_t index) const;
 
   void drop_row(size_t index);
+
+  // =========================
+  // operator methods
+  // =========================
+
+  bool operator==(const DataFrame& other) const;
+
+  bool operator!=(const DataFrame& other) const;
 
   // =========================
   // cleaning methods

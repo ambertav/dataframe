@@ -17,7 +17,7 @@ DataFrame::DataFrame(std::vector<std::string> cn)
     : column_info(std::move(cn)) {}
 
 // =========================
-// file i/o methods
+// i/o and serialization methods
 // =========================
 
 void DataFrame::from_csv(
@@ -145,6 +145,10 @@ void DataFrame::to_csv(const std::string& csv) const {
   }
 }
 
+void DataFrame::from_binary(const std::string& path) {}
+
+void DataFrame::to_binary(const std::string& path) const {}
+
 // =========================
 // size methods
 // =========================
@@ -167,6 +171,23 @@ std::vector<std::string> DataFrame::column_names() const { return column_info; }
 
 bool DataFrame::has_column(const std::string& column_name) const {
   return columns.contains(column_name);
+}
+
+const ColumnVariant* DataFrame::get_column(
+    const std::string& column_name) const {
+  auto it{columns.find(column_name)};
+  if (it == columns.end()) {
+    return nullptr;
+  }
+  return &it->second;
+}
+
+ColumnVariant* DataFrame::get_column(const std::string& column_name) {
+  auto it{columns.find(column_name)};
+  if (it == columns.end()) {
+    return nullptr;
+  }
+  return &it->second;
 }
 
 void DataFrame::drop_column(const std::string& column_name) {
@@ -286,6 +307,39 @@ void DataFrame::drop_row(size_t index) {
   }
 
   --rows;
+}
+
+// =========================
+// operator methods
+// =========================
+
+bool DataFrame::operator==(const DataFrame& other) const {
+  if (this->nrows() != other.nrows()) {
+    return false;
+  }
+
+  const std::vector<std::string> other_column_names{other.column_names()};
+  if (this->column_info.size() != other_column_names.size()) {
+    return false;
+  }
+
+  for (size_t i{0}; i < this->column_info.size(); ++i) {
+    if (this->column_info[i] != other_column_names[i]) {
+      return false;
+    }
+
+    const auto* this_variant_column{this->get_column(column_info[i])};
+    const auto* other_variant_column{other.get_column(column_info[i])};
+    if (*this_variant_column != *other_variant_column) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool DataFrame::operator!=(const DataFrame& other) const {
+  return !(*this == other);
 }
 
 // =========================
@@ -473,10 +527,10 @@ DataFrame DataFrame::get_last(size_t start) const {
 // =========================
 
 void DataFrame::describe() const {
-    if (rows == 0) {
-        std::cout << "empty dataframe\n";
-        return;
-    }
+  if (rows == 0) {
+    std::cout << "empty dataframe\n";
+    return;
+  }
 
   std::unordered_map<std::string, std::vector<double>> stats_by_row{};
   std::vector<std::string_view> col_names{};
@@ -505,7 +559,7 @@ void DataFrame::describe() const {
   }
 
   if (col_names.empty()) {
-    std::cout<< "no numerical columns to describe\n";
+    std::cout << "no numerical columns to describe\n";
     return;
   }
 
