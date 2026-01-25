@@ -60,7 +60,7 @@ class DataFrame {
     }
   }
 
-  explicit DataFrame(size_t r, std::vector<std::string> cn,
+  explicit DataFrame(size_t r, size_t c, std::vector<std::string> cn,
                      std::unordered_map<std::string, ColumnVariant> d);
   // =========================
   // i/o and serialization methods

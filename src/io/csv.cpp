@@ -107,7 +107,7 @@ DataFrame from_csv(const std::string& csv,
 
     for (size_t i{}; i < headers.size(); ++i) {
       const std::string& column_name{headers[i]};
-      const std::string_view value{tokens[i]};
+      const std::string_view value{utils::trim(tokens[i])};
 
       ColumnVariant& col{columns.at(column_name)};
 
@@ -130,7 +130,7 @@ DataFrame from_csv(const std::string& csv,
     ++line_number;
   }
 
-  return DataFrame(row_count, std::move(headers), std::move(columns));
+  return DataFrame(row_count, headers.size(), std::move(headers), std::move(columns));
 }
 
 void to_csv(const DataFrame& df, const std::string& csv, char delimiter) {
@@ -138,6 +138,8 @@ void to_csv(const DataFrame& df, const std::string& csv, char delimiter) {
   if (!file.is_open()) {
     throw std::runtime_error("failed to open csv file: " + csv);
   }
+
+  file << std::setprecision(17);
 
   const std::vector<std::string> column_names{df.column_names()};
   for (size_t i{}; i < column_names.size(); ++i) {
@@ -158,7 +160,8 @@ void to_csv(const DataFrame& df, const std::string& csv, char delimiter) {
     columns.push_back(column_variant);
   }
 
-  for (size_t i{}; i < df.nrows(); ++i) {
+  size_t rows{df.nrows()};
+  for (size_t i{}; i < rows; ++i) {
     for (size_t j{}; j < column_names.size(); ++j) {
       std::visit(
           [&](const auto& column) {
@@ -173,7 +176,10 @@ void to_csv(const DataFrame& df, const std::string& csv, char delimiter) {
         file << delimiter;
       }
     }
-    file << '\n';
+
+    if (i < rows - 1) {
+      file << '\n';
+    }
   }
 }
 

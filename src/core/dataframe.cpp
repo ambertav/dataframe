@@ -16,15 +16,17 @@ namespace df {
 // =========================
 
 DataFrame::DataFrame(std::vector<std::string> cn)
-    : column_info(std::move(cn)) {}
+    : cols(cn.size()), column_info(std::move(cn)) {}
 
-DataFrame::DataFrame(size_t r, std::vector<std::string> cn,
+DataFrame::DataFrame(size_t r, size_t c, std::vector<std::string> cn,
                      std::unordered_map<std::string, ColumnVariant> d)
     : rows(r),
-      cols(cn.size()),
+      cols(c),
       column_info(std::move(cn)),
       columns(std::move(d)) {
+  std::cout << "Constructor: rows=" << rows << ", cols=" << cols << "\n";
   normalize_length();
+  std::cout << "After normalize: rows=" << rows << ", cols=" << cols << "\n";
 }
 
 // =========================
@@ -125,7 +127,7 @@ DataFrame DataFrame::from_bytes(const std::vector<std::byte>& bytes) {
     }
   }
 
-  return DataFrame(nr, std::move(names), std::move(col_map));
+  return DataFrame(nr, names.size(), std::move(names), std::move(col_map));
 }
 
 DataFrame DataFrame::from_binary(const std::string& path) {
